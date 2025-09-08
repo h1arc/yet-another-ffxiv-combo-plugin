@@ -1,0 +1,14 @@
+{
+  "Author": "h1arc",
+  "Name": "yet another ffxiv combo plugin",
+  "InternalName": "yetanotherffxivcomboplugin",
+  "DalamudApiLevel": 13,
+  "Punchline": "yet another ffxiv combo plugin",
+  "Description": "yet another ffxiv combo plugin",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "sample",
+    "plugin",
+    "goats"
+  ]
+}

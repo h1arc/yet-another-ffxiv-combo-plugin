@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows7.0</TargetFramework>
+    <Version>0.0.0.1</Version>
+    <Description>yet another combo plugin</Description>
+    <AssemblyName>yetanotherffxivcomboplugin</AssemblyName>
+    <RootNamespace>yetanotherffxivcomboplugin</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Dalamud library path overrides for platform-specific dev hooks -->
+  <PropertyGroup>
+    <DalamudLibPath>$(AppData)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Linux'))">
+    <DalamudLibPath>$(HOME)/.xlcore/dalamud/Hooks/dev/</DalamudLibPath>
+  </PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('OSX'))">
+    <DalamudLibPath>$(HOME)/Library/Application Support/XIV on Mac/dalamud/Hooks/dev/</DalamudLibPath>
+  </PropertyGroup>
+
+  <!-- no extra Content files -->
+  <ItemGroup>
+    <Content Include="$(AssemblyName).json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Dalamud">
+      <HintPath>$(DalamudLibPath)Dalamud.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Dalamud.Common">
+      <HintPath>$(DalamudLibPath)Dalamud.Common.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Dalamud.Bindings.ImGui">
+      <HintPath>$(DalamudLibPath)Dalamud.Bindings.ImGui.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="FFXIVClientStructs">
+      <HintPath>$(DalamudLibPath)FFXIVClientStructs.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="InteropGenerator.Runtime">
+      <HintPath>$(DalamudLibPath)InteropGenerator.Runtime.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Lumina">
+      <HintPath>$(DalamudLibPath)Lumina.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Lumina.Excel">
+      <HintPath>$(DalamudLibPath)Lumina.Excel.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+  <!-- end references -->
+
+  <!-- UI windows are included; ensure Dalamud.ImGui is referenced above. -->
+
+  <!-- Debug-only: copy built DLL/PDB into XIV on Mac devPlugins -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <!-- Requested path (as seen inside XIV on Mac / Wine): -->
+    <DevPluginsPathWin>Z:\Users\mario\Library\Application Support\XIV on Mac\devPlugins\yetanotherffxivcomboplugin\</DevPluginsPathWin>
+    <!-- Host macOS path used by the build to copy files: -->
+    <DevPluginsPathMac>$(HOME)/Library/Application Support/XIV on Mac/devPlugins/yetanotherffxivcomboplugin/</DevPluginsPathMac>
+    <!-- Allow override via environment variable DEVPLUGINS_DIR; else default to mac path on OSX, else fall back to Win path string -->
+    <DevPluginsOut>$(DEVPLUGINS_DIR)</DevPluginsOut>
+    <DevPluginsOut Condition=" '$(DevPluginsOut)' == '' and $([MSBuild]::IsOSPlatform('OSX')) ">$(DevPluginsPathMac)</DevPluginsOut>
+    <DevPluginsOut Condition=" '$(DevPluginsOut)' == '' ">$(DevPluginsPathWin)</DevPluginsOut>
+  </PropertyGroup>
+
+  <Target Name="CopyToDevPlugins" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
+    <ItemGroup>
+      <DevOutputs Include="$(TargetPath)" />
+      <DevOutputs Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
+      <DevOutputs Include="$(MSBuildThisFileDirectory)$(AssemblyName).json" Condition="Exists('$(MSBuildThisFileDirectory)$(AssemblyName).json')" />
+    </ItemGroup>
+    <MakeDir Directories='$(DevPluginsOut)' Condition=" '$(DevPluginsOut)' != '' and !Exists('$(DevPluginsOut)') " />
+    <Copy SourceFiles="@(DevOutputs)" DestinationFolder="$(DevPluginsOut)" SkipUnchangedFiles="true" Condition=" '$(DevPluginsOut)' != '' " />
+    <Message Importance="high" Text="Copied to $(DevPluginsOut)" Condition=" '$(DevPluginsOut)' != '' " />
+  </Target>
+</Project>

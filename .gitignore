@@ -1,0 +1,8 @@
+bin
+obj
+IGNORE_FOLDER
+current_plan*.txt
+log_dump.log
+optional_updates.txt
+.vscode
+.DS_Store
