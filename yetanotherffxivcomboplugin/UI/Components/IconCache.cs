@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using Dalamud.Interface.Textures;
 
-namespace yetanotherffxivcomboplugin.UI.Components;
+namespace yetanotherffxivcomboplugin.ui.Components;
 
 internal static class IconCache
 {

@@ -1,7 +1,7 @@
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
 
-namespace yetanotherffxivcomboplugin.UI.Components;
+namespace yetanotherffxivcomboplugin.ui.Components;
 
 internal static class Check
 {

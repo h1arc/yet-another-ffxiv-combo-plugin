@@ -1,13 +1,13 @@
 using System.Collections.Generic;
-using yetanotherffxivcomboplugin.Config.Jobs;
-using yetanotherffxivcomboplugin.UI.Jobs.WHM;
+using yetanotherffxivcomboplugin.config.Jobs;
+using yetanotherffxivcomboplugin.ui.Jobs.WHM;
 
-namespace yetanotherffxivcomboplugin.UI.Jobs;
+namespace yetanotherffxivcomboplugin.ui.Jobs;
 
 public static class JobUiRegistry
 {
     // Lazily created UIs are kept here for the session.
-    private static readonly Dictionary<ushort, IJobConfigUI> Cache = new();
+    private static readonly Dictionary<ushort, IJobConfigUI> Cache = [];
 
     public static IJobConfigUI? Resolve(ushort jobId, Plugin plugin)
     {

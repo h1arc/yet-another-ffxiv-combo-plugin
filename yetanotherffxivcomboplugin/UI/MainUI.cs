@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
-using yetanotherffxivcomboplugin.UI.Components;
-using yetanotherffxivcomboplugin.UI.Jobs;
+using yetanotherffxivcomboplugin.ui.Components;
+using yetanotherffxivcomboplugin.ui.Jobs;
 
-namespace yetanotherffxivcomboplugin.UI;
+namespace yetanotherffxivcomboplugin.ui;
 
 internal static class MainUI
 {
@@ -85,7 +85,7 @@ internal static class MainUI
         // Optional stricter behavior: switch on focus if enabled.
         if (plugin.Configuration.SwitchToCurrentJobOnMainUiFocus && ImGui.IsWindowFocused())
         {
-            var job = (ushort)plugin.GameCache.PlayerJobId;
+            var job = (ushort)plugin.Snapshot.PlayerJobId;
             if (job != 0)
                 SelectJob(job);
         }
@@ -104,7 +104,7 @@ internal static class MainUI
             {
                 var section = _sections[_selectedSection];
                 var job = section.Jobs[_selectedJob];
-                var jobUi = JobUiRegistry.Resolve((ushort)job.JobId, plugin);
+                var jobUi = JobUiRegistry.Resolve(job.JobId, plugin);
                 if (jobUi != null)
                 {
                     jobUi.Draw(plugin);

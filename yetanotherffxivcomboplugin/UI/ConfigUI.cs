@@ -2,9 +2,9 @@ using System.Collections.Generic;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
-using yetanotherffxivcomboplugin.UI.Components;
+using yetanotherffxivcomboplugin.ui.Components;
 
-namespace yetanotherffxivcomboplugin.UI;
+namespace yetanotherffxivcomboplugin.ui;
 
 internal static class ConfigUI
 {

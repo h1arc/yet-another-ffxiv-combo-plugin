@@ -1,244 +1,221 @@
 using System;
 using Dalamud.Bindings.ImGui;
-using Dalamud.Game.ClientState.Conditions;
-using yetanotherffxivcomboplugin.Jobs.WHM;
+using yetanotherffxivcomboplugin.src.Jobs.WHM;
+using yetanotherffxivcomboplugin.src.Jobs.Interfaces;
 
-namespace yetanotherffxivcomboplugin.UI;
+namespace yetanotherffxivcomboplugin.ui;
 
 internal static class DebugUI
 {
-    public static void DrawInline(Plugin plugin)
+    public static void Draw(Plugin plugin, ref bool open)
     {
-        if (plugin.Pipeline is null || plugin.GameCache is null)
+        if (plugin.Snapshot is null)
         {
             ImGui.Text("Plugin not initialized yet.");
-            ImGui.BulletText($"Pipeline: {(plugin.Pipeline == null ? "<null>" : "ok")} ");
-            ImGui.BulletText($"GameCache: {(plugin.GameCache == null ? "<null>" : "ok")} ");
+            ImGui.BulletText($"Snapshot: {(plugin.Snapshot == null ? "<null>" : "ok")} ");
             return;
         }
         DrawBody(plugin);
     }
 
-    public static void Draw(Plugin plugin, ref bool open)
+    public static void DrawInline(Plugin plugin)
     {
-        if (!ImGui.Begin("MAC Debug", ref open, ImGuiWindowFlags.AlwaysAutoResize))
-        { ImGui.End(); return; }
-        if (plugin.Pipeline is null || plugin.GameCache is null)
+        if (plugin.Snapshot is null)
         {
             ImGui.Text("Plugin not initialized yet.");
-            ImGui.BulletText($"Pipeline: {(plugin.Pipeline == null ? "<null>" : "ok")} ");
-            ImGui.BulletText($"GameCache: {(plugin.GameCache == null ? "<null>" : "ok")} ");
-            var gate = new Core.UpdateGate(Plugin.ClientState, Plugin.Condition);
-            var skip = gate.ShouldSkip(out var reason);
-            ImGui.Separator();
-            ImGui.Text("Gating snapshot:");
-            ImGui.BulletText($"ShouldSkip: {skip} reason={reason}");
-            ImGui.BulletText($"IsLoggedIn: {Plugin.ClientState?.IsLoggedIn == true}");
-            ImGui.BulletText($"InCombat: {Plugin.Condition?[ConditionFlag.InCombat] == true}");
-            ImGui.BulletText($"BetweenAreas: {Plugin.Condition?[ConditionFlag.BetweenAreas] == true} / 51: {Plugin.Condition?[ConditionFlag.BetweenAreas51] == true}");
-            ImGui.BulletText($"Cutscene: {Plugin.Condition?[ConditionFlag.OccupiedInCutSceneEvent] == true} / Watching: {Plugin.Condition?[ConditionFlag.WatchingCutscene] == true}");
-            ImGui.BulletText($"OccupiedInEvent: {Plugin.Condition?[ConditionFlag.OccupiedInEvent] == true}");
-            ImGui.BulletText($"Mounted: {Plugin.Condition?[ConditionFlag.Mounted] == true} Casting: {Plugin.Condition?[ConditionFlag.Casting] == true}");
-            ImGui.End();
+            ImGui.BulletText($"Snapshot: {(plugin.Snapshot == null ? "<null>" : "ok")} ");
             return;
         }
         DrawBody(plugin);
-        ImGui.End();
     }
 
     private static void DrawBody(Plugin plugin)
     {
-        var pipe = plugin.Pipeline;
-        ref readonly var m = ref pipe.Metrics;
-        ImGui.Text($"Pipeline: {m}");
-        var snap = plugin.GameCache;
+        var snap = plugin.Snapshot;
+        DrawPlayerInfo(snap);
         ImGui.Separator();
+        DrawGauges(snap);
+        ImGui.Separator();
+        DrawCompiledRulesInfo(snap);
+        ImGui.Separator();
+        DrawTrackedCooldowns(snap);
+        ImGui.Separator();
+        DrawTrackedDebuffs(snap);
+        ImGui.Separator();
+        DrawRetraceInfo(snap);
+    }
+
+    // 1) Player info
+    private static void DrawPlayerInfo(src.Snapshot.GameSnapshot snap)
+    {
         ImGui.Text($"Player: {(snap.Player.IsValid ? snap.Player.Id.ToString() : "<none>")}");
         ImGui.Text($"HP%={snap.PlayerHpPct} MP={snap.PlayerMp} Lvl={snap.PlayerLevel}");
         ImGui.Text($"InCombat={(snap.Flags.InCombat ? 1 : 0)} Casting={(snap.Flags.Casting ? 1 : 0)}");
+        ImGui.Text($"Moving={(snap.PlayerMoving ? 1 : 0)}");
         ImGui.Text($"Target={(snap.Target.HasValue ? snap.Target.Value.Id.ToString() : "<none>")}");
         ImGui.Text($"JobProfile={(ushort)snap.PlayerJobId}");
+    }
 
-        ImGui.Separator();
+    // 2) Gauges (with per-job helpers)
+    private static void DrawGauges(src.Snapshot.GameSnapshot snap)
+    {
         ImGui.Text("Gauges:");
         ushort jobId = (ushort)snap.PlayerJobId;
         switch (jobId)
         {
-            case 24:
-                var g = WhmGaugeReader.Read();
-                ImGui.BulletText($"gauge1: {g.Lilies}");
-                ImGui.BulletText($"gauge2: {g.BloodLilies}");
-                ImGui.BulletText($"gauge3: {g.LilyTimerMs}ms");
-                ImGui.BulletText($"overcapSoon: {(g.OvercapSoon ? 1 : 0)}");
-                var nextMs = g.NextLilyRemainingMs;
-                ImGui.BulletText($"nextLilyIn: {(nextMs >= 0 ? nextMs.ToString() : "-")}ms");
-                break;
-            case 40:
-                var sg = yetanotherffxivcomboplugin.Jobs.SGE.SgeGaugeReader.Read();
-                ImGui.BulletText($"addersgall: {sg.Addersgall}");
-                ImGui.BulletText($"addersting: {sg.Addersting}");
-                ImGui.BulletText($"gallTimer: {sg.AddersgallTimerMs}ms");
-                ImGui.BulletText($"overcapSoon: {(sg.OvercapSoon ? 1 : 0)}");
-                var nextGall = sg.NextAddersgallRemainingMs;
-                ImGui.BulletText($"nextGallIn: {(nextGall >= 0 ? nextGall.ToString() : "-")}ms");
-                break;
-            default:
-                ImGui.BulletText("<none>");
-                break;
+            case 24: DrawWhmGauges(); break;
+            case 40: DrawSgeGauges(); break;
+            default: ImGui.BulletText("<none>"); break;
         }
+    }
 
-        ImGui.Separator();
-
-        var anchors = snap.Anchors;
-        ImGui.Text($"Anchors ({anchors.Length}): [{string.Join(",", anchors.ToArray())}]");
-        if (Plugin.Planner != null)
+    // 4) CompiledRules info (anchors, last resolved + OGCD telemetry)
+    private static void DrawCompiledRulesInfo(src.Snapshot.GameSnapshot snap)
+    {
+        if (Plugin.Runtime.Resolver == null)
         {
-            var pa = Plugin.Planner.ActiveAnchor;
-            var last = Plugin.Planner.LastAnchors;
-            ImGui.BulletText($"ActiveAnchor: {pa}");
-            ImGui.BulletText($"LastAnchors: [{string.Join(",", last.ToArray())}]");
+            ImGui.Text("Resolver: <null>");
+            return;
         }
-
-        // Transient suggestions per anchor (fresh plan built for each anchor without mutating persistent plan)
-        // var plannerTmp = Plugin.Planner;
-        // if (plannerTmp != null && anchors.Length > 0)
-        // {
-        //     ImGui.Text("Transient (per-anchor) suggestions:");
-        //     Span<Core.Suggestion> gTmp = stackalloc Core.Suggestion[4];
-        //     Span<Core.Suggestion> oTmp = stackalloc Core.Suggestion[6];
-        //     for (int k = 0; k < anchors.Length; k++)
-        //     {
-        //         int anchor = anchors[k];
-        //         ImGui.BulletText($"anchor[{k}] id={anchor}");
-        //         gTmp.Clear();
-        //         oTmp.Clear();
-        //         plannerTmp.BuildForPressed(snap, anchor, gTmp, oTmp);
-
-        //         ImGui.Indent();
-        //         ImGui.Text("GCD:");
-        //         for (int i = 0; i < gTmp.Length; i++)
-        //         {
-        //             var s = gTmp[i];
-        //             if (s.ActionId == 0) { ImGui.BulletText($"g[{i}] -"); continue; }
-        //             var fb = s.Order >= 250 ? " (fallback)" : string.Empty;
-        //             ImGui.BulletText($"g[{i}] id={s.ActionId} order={s.Order}{fb}");
-        //         }
-        //         ImGui.Text("OGCD:");
-        //         for (int i = 0; i < oTmp.Length; i++)
-        //         {
-        //             var s = oTmp[i];
-        //             if (s.ActionId == 0) { ImGui.BulletText($"o[{i}] -"); continue; }
-        //             bool ready = snap.IsActionReady(s.ActionId);
-        //             float remSec = 0f;
-        //             if (snap.TryGetCooldownRemainingMs(s.ActionId, out var ms)) remSec = ms / 1000f;
-        //             ImGui.BulletText($"o[{i}] id={s.ActionId} order={s.Order} ready={(ready ? 1 : 0)} rem={remSec:0.00}s");
-        //         }
-        //         ImGui.Unindent();
-        //     }
-        // }
-
-        ImGui.Text("Plan (GCD):");
-        var planner = Plugin.Planner;
-        if (planner != null)
+        var resolver = Plugin.Runtime.Resolver;
+        Span<int> tmp = stackalloc int[8];
+        int aCount = resolver.CopyAnchors(tmp);
+        // Fallback: include tracked cooldown ids that are anchors
+        var cdsSpan = snap.TrackedCooldowns;
+        for (int i = 0; i < cdsSpan.Length && aCount < tmp.Length; i++)
         {
-            var gcd = planner.Gcd;
-            for (int i = 0; i < gcd.Length; i++)
+            var id = cdsSpan[i]; if (id == 0) continue; if (resolver.IsAnchor(id)) tmp[aCount++] = id;
+        }
+        if (aCount > 0)
+        {
+            ImGui.Text($"Rule Anchors ({aCount}/{resolver.RuleCount}):");
+            for (int i = 0; i < aCount; i++)
             {
-                var s = gcd[i];
-                if (s.ActionId != 0)
-                    ImGui.BulletText($"[{i}] id={s.ActionId} order={s.Order}");
-                else ImGui.BulletText($"[{i}] -");
-            }
-
-            ImGui.Text("Plan (OGCD):");
-            var og = planner.Ogcd;
-            for (int i = 0; i < og.Length; i++)
-            {
-                var s = og[i];
-                if (s.ActionId != 0)
-                {
-                    bool ready = snap.IsActionReady(s.ActionId);
-                    float remSec = 0f;
-                    if (snap.TryGetCooldownRemainingMs(s.ActionId, out var ms)) remSec = ms / 1000f;
-                    ImGui.BulletText($"[{i}] id={s.ActionId} order={s.Order} ready={(ready ? 1 : 0)} rem={remSec:0.00}s");
-                }
-                else ImGui.BulletText($"[{i}] -");
+                var anchor = tmp[i]; var (resolvedId, isGcd) = resolver.Resolve(snap, anchor);
+                ImGui.BulletText($"[{i}] {anchor} -> {resolvedId} (gcd={(isGcd ? 1 : 0)})");
             }
         }
-        else
-        {
-            ImGui.Text("Planner not initialized.");
-        }
+        else ImGui.Text($"Rule Anchors: <none> (ruleCount={resolver.RuleCount})");
 
-        ImGui.Separator();
+        ImGui.BulletText($"last: anchor={resolver.LastAnchor} resolved={resolver.LastResolved} isGcd={(resolver.LastResolvedIsGcd ? 1 : 0)} frame={resolver.LastResolvedFrame}");
+        ImGui.BulletText($"ogcd: lastSuggested={resolver.LastOgcdSuggested} prio={resolver.LastOgcdPriority} frame={resolver.LastOgcdFrame} throttleRemMs={resolver.OgcdThrottleRemainingMs}");
+        ImGui.BulletText($"lastActionUsed: id={resolver.LastActionUsed}");
+    }
+
+    // 5) Tracked cooldowns
+    private static void DrawTrackedCooldowns(src.Snapshot.GameSnapshot snap)
+    {
         ImGui.Text("Tracked Cooldowns:");
         var cds = snap.TrackedCooldowns;
         if (cds.Length == 0)
         {
             ImGui.BulletText("<none>");
+            return;
         }
-        else
+        for (int i = 0; i < cds.Length; i++)
         {
-            for (int i = 0; i < cds.Length; i++)
-            {
-                var id = cds[i];
-                if (id == 0) continue;
-                var has = snap.TryGetCooldownRemainingMs(id, out int ms);
-                var sec = ms / 1000f;
-                ImGui.BulletText($"cooldown{i + 1}: id={id} remaining={(has ? sec.ToString("0.00") : "0.00")}s");
-            }
+            var id = cds[i];
+            if (id == 0) continue;
+            var has = snap.TryGetCooldownRemainingMs(id, out int ms);
+            var sec = ms / 1000f;
+            ImGui.BulletText($"cooldown{i + 1}: id={id} remaining={(has ? sec.ToString("0.00") : "0.00")}s");
         }
+    }
 
-        ImGui.Separator();
+    // 6) Tracked debuffs (current target)
+    private static void DrawTrackedDebuffs(src.Snapshot.GameSnapshot snap)
+    {
         ImGui.Text("Debuff Tracker (current target):");
         var tgtId = snap.Target.HasValue ? snap.Target.Value.Id : 0UL;
         var debuffs = snap.TrackedDebuffActions;
         if (tgtId == 0 || debuffs.Length == 0)
         {
             ImGui.BulletText("<none>");
+            return;
         }
-        else
+        for (int i = 0; i < debuffs.Length; i++)
         {
-            for (int i = 0; i < debuffs.Length; i++)
-            {
-                var act = debuffs[i];
-                if (act == 0) continue;
-                var has = snap.TryGetDebuffRemainingMsForActionOnTarget(act, tgtId, out int ms);
-                var sec = ms / 1000f;
-                ImGui.BulletText($"action={act} remaining={(has ? sec.ToString("0.00") : "-")}s");
-            }
+            var act = debuffs[i];
+            if (act == 0) continue;
+            var has = snap.TryGetDebuffRemainingMsForActionOnTarget(act, tgtId, out int ms);
+            var sec = ms / 1000f;
+            ImGui.BulletText($"action={act} remaining={(has ? sec.ToString("0.00") : "-")}s");
         }
+    }
 
-        ImGui.Separator();
-        ImGui.Text("Status Micro Cache:");
-        var lutInit = Snapshot.GameSnapshot.DispellableLutInitialized;
-        var lutCount = Snapshot.GameSnapshot.DispellableLutCount;
-        ImGui.BulletText($"Initialized: {lutInit}");
-        ImGui.BulletText($"Entries: {lutCount}");
-        Span<ushort> sample = stackalloc ushort[8];
-        if (Snapshot.GameSnapshot.TryGetDispellableLutSample(sample, out var filled) && filled > 0)
+    // 3) Retrace info (micro-cache)
+    private static void DrawRetraceInfo(src.Snapshot.GameSnapshot snap)
+    {
+        ImGui.Text("Retrace candidates (micro-cache):");
+        var job = JobRegistry.Current;
+        if (job == null || job.RetraceActions.Length == 0)
         {
-            ushort[] arr = new ushort[filled];
-            for (int i = 0; i < filled; i++) arr[i] = sample[i];
-            ImGui.BulletText($"Sample: [{string.Join(",", arr)}]");
+            ImGui.BulletText("<no retrace list>");
+            return;
         }
-        else
+        int healAid = 0; int cleanseAid = 0;
+        var rs = job.RetraceActions;
+        for (int i = 0; i < rs.Length; i++)
         {
-            ImGui.BulletText("Sample: <none>");
+            var id = rs[i]; if (id == 0) continue;
+            if (id == 7568) { cleanseAid = id; continue; } // Esuna
+            if (id == 125 || id == 24287) continue; // Raise / Egeiro
+            if (healAid == 0) healAid = id;
         }
+        if (healAid != 0)
+        {
+            var pair = snap.GetTopHealablePair(healAid, includeSelf: true);
+            if (pair.TryGetFirst(out var a))
+                ImGui.BulletText($"healable[0]: id={a} hp={(snap.Player.Id == a ? snap.PlayerHpPct : FindHpPct(snap, a))}%");
+            if (pair.TryGetSecond(out var b))
+                ImGui.BulletText($"healable[1]: id={b} hp={(snap.Player.Id == b ? snap.PlayerHpPct : FindHpPct(snap, b))}%");
+            if (!pair.TryGetFirst(out _)) ImGui.BulletText("healable: <none>");
+        }
+        else ImGui.BulletText("healable: <none>");
 
-        ImGui.Separator();
-        ImGui.Text("Gating / Conditions:");
-        var g1 = new yetanotherffxivcomboplugin.Core.UpdateGate(Plugin.ClientState, Plugin.Condition);
-        var shouldSkip = g1.ShouldSkip(out var skipReason);
-        ImGui.BulletText($"UpdateGate.ShouldSkip: {shouldSkip} reason={skipReason}");
-        ImGui.BulletText($"NonCombatThrottleInterval: {Core.UpdateGate.NonCombatThrottleInterval}");
-        ImGui.BulletText($"IsLoggedIn: {Plugin.ClientState?.IsLoggedIn == true}");
-        ImGui.BulletText($"Condition.InCombat: {Plugin.Condition?[ConditionFlag.InCombat] == true}");
-        ImGui.BulletText($"Condition.Mounted: {Plugin.Condition?[ConditionFlag.Mounted] == true}");
-        ImGui.BulletText($"Condition.Casting: {Plugin.Condition?[ConditionFlag.Casting] == true}");
-        ImGui.BulletText($"Condition.BetweenAreas: {Plugin.Condition?[ConditionFlag.BetweenAreas] == true} | BetweenAreas51: {Plugin.Condition?[ConditionFlag.BetweenAreas51] == true}");
-        ImGui.BulletText($"Condition.OccupiedInEvent: {Plugin.Condition?[ConditionFlag.OccupiedInEvent] == true}");
-        ImGui.BulletText($"Condition.Cutscene: {Plugin.Condition?[ConditionFlag.OccupiedInCutSceneEvent] == true} | WatchingCutscene: {Plugin.Condition?[ConditionFlag.WatchingCutscene] == true}");
+        if (cleanseAid != 0)
+        {
+            var cpair = snap.GetTopCleansablePair(cleanseAid, includeSelf: true);
+            if (cpair.TryGetFirst(out var ca))
+                ImGui.BulletText($"cleansable[0]: id={ca} hp={(snap.Player.Id == ca ? snap.PlayerHpPct : FindHpPct(snap, ca))}%");
+            if (cpair.TryGetSecond(out var cb))
+                ImGui.BulletText($"cleansable[1]: id={cb} hp={(snap.Player.Id == cb ? snap.PlayerHpPct : FindHpPct(snap, cb))}%");
+            if (!cpair.TryGetFirst(out _)) ImGui.BulletText("cleansable: <none>");
+        }
+        else ImGui.BulletText("cleansable: <none>");
+    }
+
+    private static byte FindHpPct(src.Snapshot.GameSnapshot snap, ulong id)
+    {
+        var span = snap.Party;
+        var hps = snap.PartyHpPct;
+        for (int i = 0; i < span.Length; i++) if (span[i].IsValid && span[i].Id == id) return hps[i];
+        return 0;
+    }
+
+
+
+
+    /// GAUGES
+    private static void DrawWhmGauges()
+    {
+        var g = WhmGaugeReader.Read();
+        ImGui.BulletText($"lilies: {g.Lilies}");
+        ImGui.BulletText($"bloodLilies: {g.BloodLilies}");
+        ImGui.BulletText($"lilyTimer: {g.LilyTimerMs}ms");
+        ImGui.BulletText($"overcapSoon: {(g.OvercapSoon ? 1 : 0)}");
+        var nextMs = g.NextLilyRemainingMs;
+        ImGui.BulletText($"nextLilyIn: {(nextMs >= 0 ? nextMs.ToString() : "-")}ms");
+    }
+
+    private static void DrawSgeGauges()
+    {
+        var sg = src.Jobs.SGE.SgeGaugeReader.Read();
+        ImGui.BulletText($"addersgall: {sg.Addersgall}");
+        ImGui.BulletText($"addersting: {sg.Addersting}");
+        ImGui.BulletText($"gallTimer: {sg.AddersgallTimerMs}ms");
+        ImGui.BulletText($"overcapSoon: {(sg.OvercapSoon ? 1 : 0)}");
+        var nextGall = sg.NextAddersgallRemainingMs;
+        ImGui.BulletText($"nextGallIn: {(nextGall >= 0 ? nextGall.ToString() : "-")}ms");
     }
 }

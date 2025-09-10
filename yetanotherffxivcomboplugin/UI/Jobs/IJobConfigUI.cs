@@ -1,4 +1,4 @@
-namespace yetanotherffxivcomboplugin.UI.Jobs;
+namespace yetanotherffxivcomboplugin.ui.Jobs;
 
 public interface IJobConfigUI
 {

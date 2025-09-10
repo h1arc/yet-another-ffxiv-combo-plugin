@@ -2,9 +2,9 @@ using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface.Utility.Raii;
-using yetanotherffxivcomboplugin.UI.Components;
+using yetanotherffxivcomboplugin.ui.Components;
 
-namespace yetanotherffxivcomboplugin.UI.Components;
+namespace yetanotherffxivcomboplugin.ui.Components;
 
 /// <summary>
 /// Collapsible combo entry component for individual combat features.

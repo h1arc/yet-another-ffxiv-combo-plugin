@@ -1,5 +1,5 @@
-using yetanotherffxivcomboplugin.Core;
-using yetanotherffxivcomboplugin.Snapshot;
+using yetanotherffxivcomboplugin.src.Core;
+using yetanotherffxivcomboplugin.src.Snapshot;
 
 static void AssertEq<T>(T expected, T actual, string name)
 {

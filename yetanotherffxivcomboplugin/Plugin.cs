@@ -5,14 +5,15 @@ using Dalamud.Plugin;
 using Dalamud.Plugin.Services;
 using Dalamud.Game.ClientState.Objects;
 
-using yetanotherffxivcomboplugin.Core;
-using yetanotherffxivcomboplugin.UI;
+using yetanotherffxivcomboplugin.src.Core;
+using yetanotherffxivcomboplugin.ui;
 using System.Collections.Generic;
 using System.Collections.Frozen;
 using Lumina.Excel.Sheets;
-using yetanotherffxivcomboplugin.Snapshot;
+using yetanotherffxivcomboplugin.src.Snapshot;
 using yetanotherffxivcomboplugin.Hooks;
-using yetanotherffxivcomboplugin.Adapters;
+using yetanotherffxivcomboplugin.src.Adapters;
+using yetanotherffxivcomboplugin.src.Helpers;
 
 namespace yetanotherffxivcomboplugin;
 
@@ -37,23 +38,21 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; init; }
 
     // GameSnapshot instance exposed for consumers
-    public GameSnapshot GameCache { get; private set; } = null!;
-    public RetraceRegistry Retrace { get; private set; } = null!;
-    public ActionExecutionPipeline Pipeline { get; private set; } = null!;
+    public GameSnapshot Snapshot { get; private set; } = null!;
+    public ActionResolver Resolver { get; private set; } = null!;
 
-    internal static GameSnapshot? GameSnapshot { get; private set; }
-    internal static Planner? Planner { get; private set; }
+    internal static class Runtime
+    {
+        internal static GameSnapshot? Snap;
+        internal static ActionResolver? Resolver;
+    }
 
-    private readonly UseActionHooker? _useActionHooker;
-    private readonly Planner? _planner;
+    private readonly UseActionHook? _useActionHook;
 
-    private ushort _job;
     private bool _debugOpen;
     private bool _mainOpen;
     private bool _configOpen;
     private bool _needsProfileApply;
-
-    // (moved) Sanctuary micro-cache now lives in GameSnapshot
 
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
@@ -75,14 +74,14 @@ public sealed class Plugin : IDalamudPlugin
 
         // Initialize core backend
         var view = new DalamudGameView(ClientState, TargetManager, PartyList, ObjectTable, Condition);
-        GameCache = new GameSnapshot(view);
-        GameSnapshot = GameCache;
-        Retrace = new RetraceRegistry();
-        _planner = new Planner();
-        Planner = _planner;
-        Pipeline = new ActionExecutionPipeline(GameCache, _planner, Retrace);
-        _useActionHooker = new UseActionHooker(Pipeline, Interop);
-        _useActionHooker.Enable();
+        Snapshot = new GameSnapshot(view);
+        Resolver = new ActionResolver();
+
+        Runtime.Snap = Snapshot;
+        Runtime.Resolver = Resolver;
+
+        _useActionHook = new UseActionHook(Resolver, Interop);
+        _useActionHook.Enable();
 
         // Initialize sanctuary micro-cache once at startup via GameSnapshot
         GameSnapshot.UpdateSanctuary(DataManager, ClientState?.TerritoryType ?? 0);
@@ -92,6 +91,7 @@ public sealed class Plugin : IDalamudPlugin
 
         // No cached player state; events drive resets/loads
         Framework.Update += OnFrameworkUpdate;
+
         PluginInterface.UiBuilder.Draw += OnDrawUi;
         PluginInterface.UiBuilder.OpenMainUi += OnOpenMainUi;
         PluginInterface.UiBuilder.OpenConfigUi += OnOpenConfigUi;
@@ -99,6 +99,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             ClientState.Login += OnLogin;
             ClientState.Logout += OnLogout;
+
             ClientState.ClassJobChanged += OnClassJobChanged;
             ClientState.LevelChanged += OnLevelChanged;
             // ClientState.TerritoryChanged += OnTerritoryChanged;
@@ -106,7 +107,7 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "yafcp: debug"
+            HelpMessage = "No help message yet! :3"
         });
 
         Log.Information($"[{PluginInterface.Manifest.Name}] Initialized");
@@ -120,7 +121,7 @@ public sealed class Plugin : IDalamudPlugin
             if (ClientState.IsLoggedIn)
             {
                 // Refresh snapshot first so ConfigureJob reads the correct level and state
-                GameCache.Update();
+                Snapshot.Update();
                 ApplyCurrentJobProfile();
                 _needsProfileApply = false;
             }
@@ -146,17 +147,15 @@ public sealed class Plugin : IDalamudPlugin
 
     private void UpdateSnapshotAndPlan()
     {
-        // Refresh snapshot, prune Retrace entries, and tick planner (planner rebuilds in combat only)
-        GameCache.Update();
-        Retrace.ClearOld(TimeSpan.FromSeconds(20));
-        Pipeline.Tick();
+        // Refresh snapshot
+        Snapshot.Update();
     }
 
 
     public void Dispose()
     {
         // No explicit sanctuary cleanup needed; stays false on next start
-        GameSnapshot = null;
+        Runtime.Snap = null;
         CommandManager.RemoveHandler(CommandName);
         Framework.Update -= OnFrameworkUpdate;
         PluginInterface.UiBuilder.Draw -= OnDrawUi;
@@ -171,24 +170,28 @@ public sealed class Plugin : IDalamudPlugin
             ClientState.LevelChanged -= OnLevelChanged;
             // ClientState.TerritoryChanged -= OnTerritoryChanged;
         }
-        _useActionHooker?.Dispose();
+        _useActionHook?.Dispose();
     }
 
     private void OnLogin() { ClearAll(); _needsProfileApply = true; }
     private void OnLogout(int type, int code) { ClearAll(); }
 
-    private void OnClassJobChanged(uint _)
+    private void OnClassJobChanged(uint newJobId)
     {
-        ClearAll();
-        ApplyCurrentJobProfile();
-        Log.Information("[yafcp] Job changed: scheduling profile apply");
+        // Refresh snapshot first so level/job-dependent progression resolves correctly
+        Snapshot.Update();
+        Resolver.ClearRules();
+        ApplyCurrentJobProfile((ushort)newJobId);
+        Log.Information($"[yafcp] Job changed -> applied profile (job={newJobId})");
     }
 
     private void OnLevelChanged(uint _, uint __)
     {
-        ClearAll();
+        // Snapshot must reflect new level before re-registering rules
+        Snapshot.Update();
+        Resolver.ClearRules();
         ApplyCurrentJobProfile();
-        Log.Information("[yafcp] Level changed: scheduling profile apply");
+        Log.Information($"[yafcp] Level changed -> re-applied profile (lvl={Snapshot.PlayerLevel})");
     }
 
     // private void OnTerritoryChanged(ushort _)
@@ -201,16 +204,17 @@ public sealed class Plugin : IDalamudPlugin
 
     private void ClearAll()
     {
-        _planner?.Reset();
-        Retrace.ClearAll();
+        // No explicit shutdown; clearing rules by setting to current job again handled in SetJob.
+        Resolver?.ClearRules();
     }
 
     // Sanctuary updates are handled at startup and on TerritoryChanged.
 
-    private void ApplyCurrentJobProfile()
+    private void ApplyCurrentJobProfile(ushort? explicitJob = null)
     {
-        _job = (ushort)(ClientState.LocalPlayer?.ClassJob.Value.RowId ?? 0u);
-        Jobs.Interfaces.JobRegistry.ApplyForJob(_job, GameCache, _planner);
+        var jid = explicitJob ?? (ushort)(ClientState.LocalPlayer?.ClassJob.Value.RowId ?? 0u);
+        if (jid == 0) { Resolver.ClearRules(); return; }
+        src.Jobs.Interfaces.JobRegistry.SetJob(jid, Snapshot, Resolver);
     }
 
 
@@ -237,9 +241,9 @@ public sealed class Plugin : IDalamudPlugin
         _mainOpen = true;
         try
         {
-            if (Configuration.OpenMainUiToCurrentJob && GameCache != null)
+            if (Configuration.OpenMainUiToCurrentJob && Snapshot != null)
             {
-                var job = (ushort)GameCache.PlayerJobId;
+                var job = (ushort)Snapshot.PlayerJobId;
                 if (job != 0)
                 {
                     _ = MainUI.SelectJob(job);
@@ -256,6 +260,4 @@ public sealed class Plugin : IDalamudPlugin
         if (_configOpen) ConfigUI.Draw(this, ref _configOpen);
         if (_debugOpen) DebugUI.Draw(this, ref _debugOpen);
     }
-
-    // Removed legacy dump/test commands; Debug UI surfaces runtime info now.
 }

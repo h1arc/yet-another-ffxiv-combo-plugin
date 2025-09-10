@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace yetanotherffxivcomboplugin.Core;
+namespace yetanotherffxivcomboplugin.src.Core;
 
 /// <summary>
 /// Pure, test-friendly helpers that mirror core decision policies without touching Dalamud.

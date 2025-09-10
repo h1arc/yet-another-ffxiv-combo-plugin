@@ -1,7 +1,7 @@
 using System;
 using Dalamud.Bindings.ImGui;
 
-namespace yetanotherffxivcomboplugin.UI.Components;
+namespace yetanotherffxivcomboplugin.ui.Components;
 
 internal static class SubOption
 {

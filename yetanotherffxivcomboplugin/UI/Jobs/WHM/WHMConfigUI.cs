@@ -1,9 +1,9 @@
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
-using yetanotherffxivcomboplugin.Config.Jobs;
-using yetanotherffxivcomboplugin.UI.Components;
+using yetanotherffxivcomboplugin.config.Jobs;
+using yetanotherffxivcomboplugin.ui.Components;
 
-namespace yetanotherffxivcomboplugin.UI.Jobs.WHM;
+namespace yetanotherffxivcomboplugin.ui.Jobs.WHM;
 
 public class WHMConfigUI(WHMConfig cfg) : IJobConfigUI
 {

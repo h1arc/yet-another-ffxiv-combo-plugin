@@ -74,6 +74,10 @@
     <DevPluginsOut>$(DEVPLUGINS_DIR)</DevPluginsOut>
     <DevPluginsOut Condition=" '$(DevPluginsOut)' == '' and $([MSBuild]::IsOSPlatform('OSX')) ">$(DevPluginsPathMac)</DevPluginsOut>
     <DevPluginsOut Condition=" '$(DevPluginsOut)' == '' ">$(DevPluginsPathWin)</DevPluginsOut>
+    <!-- Set to true to force deleting the destination directory before copy -->
+    <CleanDevPlugins Condition=" '$(CleanDevPlugins)' == '' ">false</CleanDevPlugins>
+    <!-- Set to true to emit per-file size & timestamp after copy -->
+    <VerboseDevCopy Condition=" '$(VerboseDevCopy)' == '' ">false</VerboseDevCopy>
   </PropertyGroup>
 
   <Target Name="CopyToDevPlugins" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
@@ -82,8 +86,18 @@
       <DevOutputs Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />
       <DevOutputs Include="$(MSBuildThisFileDirectory)$(AssemblyName).json" Condition="Exists('$(MSBuildThisFileDirectory)$(AssemblyName).json')" />
     </ItemGroup>
+    <!-- Optional clean -->
+    <RemoveDir Directories="$(DevPluginsOut)" Condition=" '$(DevPluginsOut)' != '' and '$(CleanDevPlugins)' == 'true' and Exists('$(DevPluginsOut)') " />
     <MakeDir Directories='$(DevPluginsOut)' Condition=" '$(DevPluginsOut)' != '' and !Exists('$(DevPluginsOut)') " />
     <Copy SourceFiles="@(DevOutputs)" DestinationFolder="$(DevPluginsOut)" SkipUnchangedFiles="true" Condition=" '$(DevPluginsOut)' != '' " />
-    <Message Importance="high" Text="Copied to $(DevPluginsOut)" Condition=" '$(DevPluginsOut)' != '' " />
+    <!-- Capture basic file metadata for optional verbose logging -->
+    <ItemGroup Condition=" '$(VerboseDevCopy)' == 'true' and '$(DevPluginsOut)' != '' ">
+      <CopiedDevOutputs Include="@(DevOutputs)">
+        <Size>$([System.IO.FileInfo]::new('%(Identity)').Length)</Size>
+        <LastWrite>$([System.IO.File]::GetLastWriteTime('%(Identity)'))</LastWrite>
+      </CopiedDevOutputs>
+    </ItemGroup>
+    <Message Importance="high" Text="Dev plugin copy: $(AssemblyName) -> $(DevPluginsOut) (Clean=$(CleanDevPlugins))" Condition=" '$(DevPluginsOut)' != '' " />
+    <Message Importance="high" Condition=" '$(VerboseDevCopy)' == 'true' and '$(DevPluginsOut)' != '' " Text="%(CopiedDevOutputs.Identity) | size=%(CopiedDevOutputs.Size) | time=%(CopiedDevOutputs.LastWrite)" />
   </Target>
 </Project>

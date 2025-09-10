@@ -1,6 +1,6 @@
 using System;
 
-namespace yetanotherffxivcomboplugin.Config.Jobs;
+namespace yetanotherffxivcomboplugin.config.Jobs;
 
 [Serializable]
 public class WHMConfig
